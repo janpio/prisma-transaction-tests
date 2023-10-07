@@ -30,7 +30,12 @@ async function write(length: number) {
   });
 }
 
-type ReadMode = "raw" | "nested" | "nested-with-transaction" | "independent";
+type ReadMode =
+  | "raw"
+  | "nested"
+  | "nested-with-transaction"
+  | "nested-with-interactive-transaction"
+  | "independent";
 
 async function read(mode: ReadMode) {
   let snakeWithTail: {
@@ -92,6 +97,13 @@ async function read(mode: ReadMode) {
         }
       );
       break;
+    case "nested-with-interactive-transaction":
+      snakeWithTail = await prisma.$transaction(async (tx) => {
+        return tx.snake.findUniqueOrThrow({
+          where: { name: "Python" },
+          include: { tail: true },
+        });
+      });
     case "nested":
     default:
       snakeWithTail = await prisma.snake.findUniqueOrThrow({
@@ -121,9 +133,7 @@ async function test(runFor: number, mode: any) {
   try {
     await Promise.all([writeLoop(runFor), readLoop(runFor, mode)]);
   } catch {
-    console.log(
-      `FAILURE -> Detected mismatch for mode '${mode}' with error data`
-    );
+    console.log(`FAILURE -> Detected mismatch for mode '${mode}'`);
     return;
   }
   console.log(`SUCCESS -> Finished without mismatches for mode '${mode}'`);
@@ -135,6 +145,7 @@ async function main() {
   await test(runFor, "raw");
   await test(runFor, "nested");
   await test(runFor, "nested-with-transaction");
+  await test(runFor, "nested-with-interactive-transaction");
   await test(runFor, "independent");
   console.log("Done");
 }
