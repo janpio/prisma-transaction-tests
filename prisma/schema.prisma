@@ -1,0 +1,30 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Snake {
+  id     Int    @id @default(autoincrement())
+  name   String @unique
+  length Int
+  tail   Tail?
+
+  @@map("snakes")
+}
+
+model Tail {
+  id     Int @id @default(autoincrement())
+  length Int
+
+  snakeId Int   @unique @map("snake_id")
+  snake   Snake @relation(fields: [snakeId], references: [id], onDelete: Cascade)
+
+  @@map("tails")
+}
