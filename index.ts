@@ -99,17 +99,23 @@ async function read(mode: ReadMode) {
       break;
     case "nested-with-interactive-transaction":
       snakeWithTail = await prisma.$transaction(async (tx) => {
-        return tx.snake.findUniqueOrThrow({
+        const snake = await tx.snake.findUniqueOrThrow({
           where: { name: "Python" },
           include: { tail: true },
         });
+        return snake
+      },
+      {
+        isolationLevel: "RepeatableRead",
       });
+      break;
     case "nested":
     default:
       snakeWithTail = await prisma.snake.findUniqueOrThrow({
         where: { name: "Python" },
         include: { tail: true },
       });
+      break;
   }
   if (snakeWithTail.length !== snakeWithTail.tail?.length) {
     throw snakeWithTail;
@@ -130,13 +136,25 @@ async function readLoop(runFor: number, mode: any) {
 
 async function test(runFor: number, mode: any) {
   await init();
-  try {
-    await Promise.all([writeLoop(runFor), readLoop(runFor, mode)]);
-  } catch {
-    console.log(`FAILURE -> Detected mismatch for mode '${mode}'`);
-    return;
-  }
-  console.log(`SUCCESS -> Finished without mismatches for mode '${mode}'`);
+  // try {
+  //   await Promise.all([writeLoop(runFor), readLoop(runFor, mode)]);
+  // } catch {
+  //   console.log(`FAILURE -> Detected mismatch for mode '${mode}'`);
+  //   return;
+  // }
+  // console.log(`SUCCESS -> Finished without mismatches for mode '${mode}'`);
+
+  await Promise.allSettled([writeLoop(runFor), readLoop(runFor, mode)])
+    .then(results => {
+      for (const result of results) {
+        if (result.status === 'rejected') {
+          console.log(`FAILURE -> Detected mismatch for mode '${mode}'`);
+          console.log("results: ", result.reason.length, result.reason.tail?.length)
+          return;
+        }
+      }
+      console.log(`SUCCESS -> Finished without mismatches for mode '${mode}'`);
+    })
 }
 
 async function main() {
