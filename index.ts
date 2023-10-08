@@ -162,9 +162,26 @@ async function read(mode: ReadMode, i: number) {
         tail,
       };
       break;
+    case "nested-with-interactive-transaction":
+      snakeWithTail = await prisma.$transaction(async (tx) => {
+        const snake = await tx.snake.findUniqueOrThrow({
+          where: { name: "Python" },
+          include: { tail: true },
+        });
+        return snake
+      },
+      {
+        isolationLevel: "RepeatableRead",
+      });
+      break;
+    case "nested":
+      snakeWithTail = await prisma.snake.findUniqueOrThrow({
+        where: { name: "Python" },
+        include: { tail: true },
+      });
+      break;
     default:
       throw new Error("undefined mode")
-
   }
   console.log(`# read (${i}, ${mode})`, snakeWithTail.length, snakeWithTail.tail?.length)
   if (snakeWithTail.length !== snakeWithTail.tail?.length) {

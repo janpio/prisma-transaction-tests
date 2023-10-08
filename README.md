@@ -9,15 +9,17 @@ For the length update operation we use prisma nested write ops and for the read 
 1. Raw -> a query with relations is written as raw SQL
 2. Nested -> a prisma with nested read queries
 3. Nested-with-transaction -> a prisma with nested read queries wrapped in a transaction (RepeatableRead to make sure read ops are constistent).
-4. Nested-with-transaction -> a prisma with nested read queries wrapped in an interactive transaction (RepeatableRead to make sure read ops are constistent).
+4. Nested-with-interactive-transaction -> a prisma with nested read queries wrapped in an _interactive_ transaction (RepeatableRead to make sure read ops are constistent).
 5. Indipendent -> different prisma queries wrapped in a transaction (RepeatableRead to make sure read ops are consistent).
 
 ## Run
 
 ```bash
 nvm use # if you are using nvm, otherwise use your node version
+docker compose up -d # to start the local database
 npm i
-cp .env.example .env # and make sure you update your DATABASE_URL based on your local setup
+cp .env.example .env # (no need to update DATABASE_URL if you are fine using the one from docker compose)
+npx prisma db push
 npm run test
 # The test is running for 100 iterations for each mode and validates their results.
 # Output
