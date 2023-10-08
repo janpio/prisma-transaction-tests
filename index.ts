@@ -91,6 +91,7 @@ async function read(mode: ReadMode) {
             where: { name: "Python" },
             include: { tail: true },
           }),
+          prisma.$executeRaw`SELECT 1`
         ],
         {
           isolationLevel: "RepeatableRead",
