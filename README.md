@@ -19,6 +19,7 @@ nvm use # if you are using nvm, otherwise use your node version
 docker compose up -d # to start the local database
 npm i
 cp .env.example .env # (no need to update DATABASE_URL if you are fine using the one from docker compose)
+npx prisma db push
 npm run test
 # The test is running for 100 iterations for each mode and validates their results.
 # Output
