@@ -1,23 +1,70 @@
 import { PrismaClient } from "@prisma/client";
-const prisma = new PrismaClient();
+const writePrisma = new PrismaClient({
+  log: [
+    {
+      emit: 'event',
+      level: 'query',
+    },
+    {
+      emit: 'stdout',
+      level: 'error',
+    },
+    {
+      emit: 'stdout',
+      level: 'info',
+    },
+    {
+      emit: 'stdout',
+      level: 'warn',
+    },
+  ],
+})
+writePrisma.$on('query', (e) => {
+  console.log('writePrisma: ' + e.query)
+})
+
+const prisma = new PrismaClient({
+  log: [
+    {
+      emit: 'event',
+      level: 'query',
+    },
+    {
+      emit: 'stdout',
+      level: 'error',
+    },
+    {
+      emit: 'stdout',
+      level: 'info',
+    },
+    {
+      emit: 'stdout',
+      level: 'warn',
+    },
+  ],
+})
+prisma.$on('query', (e) => {
+  console.log('readPrisma: ' + e.query)
+})
 
 async function init() {
-  await prisma.snake.deleteMany({});
-  await prisma.snake.create({
+  await writePrisma.snake.deleteMany({});
+  await writePrisma.snake.create({
     data: {
       name: "Python",
-      length: 10,
+      length: 999,
       tail: {
         create: {
-          length: 10,
+          length: 999,
         },
       },
     },
   });
+  console.log("# create", 999, 999)
 }
 
-async function write(length: number) {
-  await prisma.snake.update({
+async function write(mode: ReadMode, length: number) {
+  await writePrisma.snake.update({
     where: { name: "Python" },
     data: {
       length,
@@ -28,6 +75,7 @@ async function write(length: number) {
       },
     },
   });
+  console.log(`# write (${length}, ${mode})`, length, length)
 }
 
 type ReadMode =
@@ -37,7 +85,7 @@ type ReadMode =
   | "nested-with-interactive-transaction"
   | "independent";
 
-async function read(mode: ReadMode) {
+async function read(mode: ReadMode, i: number) {
   let snakeWithTail: {
     tail: {
       id: number;
@@ -65,25 +113,11 @@ async function read(mode: ReadMode) {
         },
       };
       break;
-    case "independent":
-      const [snake, tail] = await prisma.$transaction(
-        [
-          prisma.snake.findUniqueOrThrow({
-            where: { name: "Python" },
-          }),
-          prisma.tail.findFirst({
-            where: { snake: { name: "Python" } },
-          }),
-        ],
-        {
-          isolationLevel: "RepeatableRead",
-        }
-      );
-      snakeWithTail = {
-        ...snake,
-        tail,
-      };
-      break;
+    case "nested":
+      snakeWithTail = await prisma.snake.findUniqueOrThrow({
+        where: { name: "Python" },
+        include: { tail: true },
+      });
     case "nested-with-transaction":
       [snakeWithTail] = await prisma.$transaction(
         [
@@ -103,51 +137,94 @@ async function read(mode: ReadMode) {
           where: { name: "Python" },
           include: { tail: true },
         });
-      });
-    case "nested":
+      },
+        {
+          isolationLevel: "RepeatableRead",
+        }
+      );
+      break;
+    case "independent":
+      const [snake, tail] = await prisma.$transaction(
+        [
+          prisma.snake.findUniqueOrThrow({
+            where: { name: "Python" },
+          }),
+          prisma.tail.findFirst({
+            where: { snake: { name: "Python" } },
+          }),
+        ],
+        {
+          isolationLevel: "RepeatableRead",
+        }
+      );
+      snakeWithTail = {
+        ...snake,
+        tail,
+      };
+      break;
     default:
-      snakeWithTail = await prisma.snake.findUniqueOrThrow({
-        where: { name: "Python" },
-        include: { tail: true },
-      });
+      throw new Error("undefined mode")
+
   }
+  console.log(`# read (${i}, ${mode})`, snakeWithTail.length, snakeWithTail.tail?.length)
   if (snakeWithTail.length !== snakeWithTail.tail?.length) {
     throw snakeWithTail;
   }
 }
 
-async function writeLoop(runFor: number) {
+async function writeLoop(runFor: number, mode: any) {
   for (let i = 0; i < runFor; i++) {
-    await write(i);
+    await write(mode, i);
   }
 }
 
 async function readLoop(runFor: number, mode: any) {
   for (let i = 0; i < runFor; i++) {
-    await read(mode);
+    await read(mode, i);
   }
 }
 
 async function test(runFor: number, mode: any) {
+  console.log("\n%%% test", mode)
+  console.log("\n% init")
   await init();
-  try {
-    await Promise.all([writeLoop(runFor), readLoop(runFor, mode)]);
-  } catch {
-    console.log(`FAILURE -> Detected mismatch for mode '${mode}'`);
-    return;
-  }
-  console.log(`SUCCESS -> Finished without mismatches for mode '${mode}'`);
+  console.log("\n% promises")
+
+  await Promise.allSettled([writeLoop(runFor, mode), readLoop(runFor, mode)])
+    .then(results => {
+      for (const result of results) {
+        if (result.status === 'rejected') {
+          console.log(`FAILURE -> Detected mismatch for mode '${mode}'`);
+          console.log("results: ", result.reason.length, result.reason.tail?.length)
+          return;
+        }
+      }
+      console.log(`SUCCESS -> Finished without mismatches for mode '${mode}'`);
+    })
 }
 
 async function main() {
   const runFor = process.env.RUN_FOR ? parseInt(process.env.RUN_FOR) : 100;
   console.log("Running for", runFor);
   await test(runFor, "raw");
+  await sleep(2000)
+  console.log("% continue")
   await test(runFor, "nested");
+  await sleep(2000)
+  console.log("% continue")
   await test(runFor, "nested-with-transaction");
+  await sleep(2000)
+  console.log("% continue")
   await test(runFor, "nested-with-interactive-transaction");
+  await sleep(2000)
+  console.log("% continue")
   await test(runFor, "independent");
   console.log("Done");
+}
+
+function sleep(ms: number) {
+  console.log("% sleep, to wait for logs", ms)
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 main();
